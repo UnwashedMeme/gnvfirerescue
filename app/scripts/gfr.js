@@ -69,7 +69,7 @@ function GnvData() {
   'use strict';
   console.log("Instantiating GnvData");
   var self = this;
-  this.dataUrl = 'scripts/gnv-data.json';
+  this.dataUrl = 'scripts/gnv-data.json.gz';
   this.plots = {};
   this.renderers = {};
 
