@@ -5,6 +5,17 @@ function GnvCF(rows) {
   this.typeDim = this.cf.dimension(_.property('problem'));
   this.dateDim = this.cf.dimension(_.property('response_date'));
 
+  this.hourDim = this.cf.dimension(function (row) {
+    var date = row.response_date;
+    return date.getHours();
+  });
+
+  this.dayDim = this.cf.dimension(function (row) {
+    var date = row.response_date;
+    return date.getDay();
+  });
+
+
 
   this.getTypeData = function () {
     return _.map(
@@ -14,6 +25,10 @@ function GnvCF(rows) {
       }
     );
   };
+
+  function m2tuple(arg) {
+    return [arg.key, arg.value];
+  }
 
   this.getResponseByDate = function () {
     var min = this.dateDim.bottom(1)[0].response_date,
@@ -30,9 +45,15 @@ function GnvCF(rows) {
           .reduceCount()
           .all();
 
-    return _.map(data, function (arg) {
-      return [arg.key, arg.value];
-    });
+    return _.map(data, m2tuple);
+  };
+
+  this.getHourlyData = function () {
+    return _.map(this.hourDim.group().reduceCount().all(), m2tuple);
+  };
+
+  this.getDailyData = function () {
+    return _.map(this.dayDim.group().reduceCount().all(), m2tuple);
   };
 }
 
@@ -48,6 +69,8 @@ function GnvData() {
     var cfp = self.getCrossFilter();
     cfp.then(self.renderPieChart);
     cfp.then(self.renderResponsesbyDate);
+    cfp.then(self.renderDay);
+    cfp.then(self.renderHour);
   };
 
   this.fetchJson = function (url) {
@@ -133,5 +156,50 @@ function GnvData() {
       }
     };
     $.plot('#chart-type', data, options);
+  };
+
+  this.renderDay = function (gnvcf) {
+    var data = gnvcf.getDailyData();
+    var options = {
+      series: {
+        bars: {
+          show: true
+        }
+      },
+      grid: {
+        hoverable: true
+      },
+      tooltip: {
+        show: true,
+        content: "%y"
+      },
+      xaxis: {
+        ticks: [[0, "Sunday"], [1, "Monday"], [2, "Tuesday"], [3, "Wednesday"],
+                [4, "Thursday"], [5, "Friday"], [6, "Saturday"]],
+      }
+    };
+    $.plot('#chart-day', [data], options);
+  };
+
+  this.renderHour = function  (gnvcf) {
+    var data = gnvcf.getHourlyData();
+    var options = {
+      series: {
+        bars: {
+          show: true
+        }
+      },
+      grid: {
+        hoverable: true
+      },
+      tooltip: {
+        show: true,
+        content: "%y"
+      },
+      xaxis: {
+        tickDecimals: 0,
+      }
+    };
+    $.plot('#chart-hour', [data], options);
   };
 }
