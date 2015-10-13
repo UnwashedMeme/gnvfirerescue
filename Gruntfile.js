@@ -338,7 +338,7 @@ module.exports = function (grunt) {
             'images/{,*/}*.webp',
             '{,*/}*.html',
             'styles/fonts/{,*/}*.*',
-            'scripts/gnv-data.json.gz'
+            'scripts/gnv-data.json'
           ]
         }, {
           expand: true,
