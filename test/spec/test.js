@@ -13,7 +13,9 @@
   describe('GnvCF', function () {
     function sampleRow() {
       return {
-        response_date: new Date(),
+        response_date: new Date(
+          _.random(new Date("2012-01-01T00:00:00"),
+                   new Date("2015-10-01T00:00:00"))),
         problem: _.sample(['EMS', 'HAZ', 'ALM', 'FIRE'])
       };
     }
@@ -36,6 +38,16 @@
     });
 
 
+    it('should getResponseByDate in a good format', function ( ) {
+      var gnvcf = new GnvCF(sampleData);
+      var rbd = gnvcf.getResponseByDate();
+      assert.ok(rbd);
+      assert.isArray(rbd);
+      assert.isAbove(rbd.length, 2);
+      assert.isArray(rbd[0]);
+      assert.equal(rbd[0].length, 2);
+      assert.typeOf(rbd[0][0], 'date');
+    });
 
   });
 

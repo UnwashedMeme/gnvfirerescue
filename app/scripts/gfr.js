@@ -14,6 +14,26 @@ function GnvCF(rows) {
       }
     );
   };
+
+  this.getResponseByDate = function () {
+    var min = this.dateDim.bottom(1)[0].response_date,
+        max = this.dateDim.top(1)[0].response_date;
+    //var roundto = Math.round((max - min) / 250);  // have 250 data points across the row
+    var roundto = 24 * 60 * 60 * 1000; // 1 day
+    while((max - min) / roundto > 1000) {
+      roundto = roundto * 2;
+    }
+    var data = this.dateDim
+          .group(function (i) {
+            return new Date(_.round(i / roundto) * roundto);
+          })
+          .reduceCount()
+          .all();
+
+    return _.map(data, function (arg) {
+      return [arg.key, arg.value];
+    });
+  };
 }
 
 function GnvData() {
@@ -25,9 +45,9 @@ function GnvData() {
 
 
   this.kickstart = function () {
-    self.getCrossFilter().then(function (cf) {
-      self.renderPieChart(cf);
-    });
+    var cfp = self.getCrossFilter();
+    cfp.then(self.renderPieChart);
+    cfp.then(self.renderResponsesbyDate);
   };
 
   this.fetchJson = function (url) {
@@ -62,6 +82,25 @@ function GnvData() {
         .then(function (rows) { return new GnvCF(rows); });
     }
     return self._crossfilter;
+  };
+
+  this.renderResponsesbyDate = function (gnvcf) {
+    var data = gnvcf.getResponseByDate();
+    var options = {
+      xaxis: { mode: "time" },
+      yaxis: {  min: 0 },
+      tooltip: {
+        show: true,
+        content: '%x: %y'
+      },
+      // selection: {
+      //   mode: 'x'
+      // },
+      grid: {
+        hoverable: true
+      }
+    };
+    $.plot('#chart-responsesByDate', [data], options);
   };
 
   this.renderPieChart = function (gnvcf) {
