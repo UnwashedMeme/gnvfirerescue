@@ -10,11 +10,54 @@
     });
   });
 
+  describe('GnvCF', function () {
+    function sampleRow() {
+      return {
+        response_date: new Date(),
+        problem: _.sample(['EMS', 'HAZ', 'ALM', 'FIRE'])
+      };
+    }
+    var sampleData = _.times(10, sampleRow);
+
+    it('should construct', function () {
+      var gnvcf = new GnvCF(sampleData);
+      assert.ok(gnvcf);
+      assert.ok(gnvcf.cf);
+    });
+
+    it('should getTypeData in a good format', function () {
+      var gnvcf = new GnvCF(sampleData);
+      var td = gnvcf.getTypeData();
+      assert.ok(td);
+      assert.isAbove(td.length, 0);
+      var row = td[0];
+      assert.property(row, 'label');
+      assert.property(row, 'data');
+    });
+
+
+
+  });
+
   describe('GnvData', function () {
     var gnv;
     beforeEach(function () {
       gnv = new GnvData();
-      gnv.dataUrl = "../js/gnv-data.json";
+      gnv.dataUrl = "scripts/gnv-data.json";
+    });
+
+
+    function getSampleData() {
+      return gnv.fetchJson(gnv.dataUrl);
+    }
+
+    describe('fetchJson', function () {
+      it('should get the sample data file', function () {
+        return getSampleData().then(function (response) {
+          console.log("Got sample data file");
+          assert.ok(response);
+        });
+      });
     });
 
     describe('parseData', function () {
@@ -31,8 +74,9 @@
       });
 
       it('should return an array of objects', function () {
-        return Q({}).then(gnv.parseData).then(function (data) {
+        return getSampleData().then(gnv.parseData).then(function (data) {
           assert.isArray(data);
+          expect(data).to.have.length.above(1000);
         });
       });
     });
