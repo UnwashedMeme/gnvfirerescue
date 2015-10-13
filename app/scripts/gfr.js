@@ -2,58 +2,62 @@ function GnvCF(rows) {
   'use strict';
   console.log("Creating crossfilter of length ", rows.length);
   this.cf = crossfilter(rows);
-  this.typeDim = this.cf.dimension(_.property('problem'));
-  this.dateDim = this.cf.dimension(_.property('response_date'));
-
-  this.hourDim = this.cf.dimension(function (row) {
-    var date = row.response_date;
-    return date.getHours();
-  });
-
-  this.dayDim = this.cf.dimension(function (row) {
-    var date = row.response_date;
-    return date.getDay();
-  });
-
-
+  this.dims = {
+    'type': this.cf.dimension(_.property('problem')),
+    'date': this.cf.dimension(_.property('response_date')),
+    'hour': this.cf.dimension(function (row) {
+      var date = row.response_date;
+      return date.getHours();
+    }),
+    'day': this.cf.dimension(function (row) {
+      var date = row.response_date;
+      return date.getDay();
+    })
+  };
 
   this.getTypeData = function () {
     return _.map(
-      this.typeDim.group().reduceCount().all(),
+      this.dims.type.group().reduceCount().all(),
       function (i) {
         return {label: i.key, data: i.value};
       }
     );
   };
 
-  function m2tuple(arg) {
-    return [arg.key, arg.value];
-  }
+  function m2tuple(arg) { return [arg.key, arg.value]; }
 
   this.getResponseByDate = function () {
-    var min = this.dateDim.bottom(1)[0].response_date,
-        max = this.dateDim.top(1)[0].response_date;
+    var min = this.dims.date.bottom(1)[0].response_date,
+        max = this.dims.date.top(1)[0].response_date;
     //var roundto = Math.round((max - min) / 250);  // have 250 data points across the row
     var roundto = 24 * 60 * 60 * 1000; // 1 day
     while((max - min) / roundto > 1000) {
       roundto = roundto * 2;
     }
-    var data = this.dateDim
+    var data = this.dims.date
           .group(function (i) {
             return new Date(_.round(i / roundto) * roundto);
           })
           .reduceCount()
           .all();
-
     return _.map(data, m2tuple);
   };
 
   this.getHourlyData = function () {
-    return _.map(this.hourDim.group().reduceCount().all(), m2tuple);
+    return _.map(this.dims.hour.group().reduceCount().all(), m2tuple);
   };
 
   this.getDailyData = function () {
-    return _.map(this.dayDim.group().reduceCount().all(), m2tuple);
+    return _.map(this.dims.day.group().reduceCount().all(), m2tuple);
+  };
+
+  this.setFilter = function (dim, min, max) {
+    console.log("Adding filter on ", dim, min, max);
+    this.dims[dim].filterRange([min, max]);
+  };
+
+  this.clearFilter = function (dim) {
+    this.dims[dim].filterAll();
   };
 }
 
@@ -61,16 +65,33 @@ function GnvData() {
   'use strict';
   console.log("Instantiating GnvData");
   var self = this;
-
   this.dataUrl = 'scripts/gnv-data.json';
-
+  this.plots = {};
+  this.renderers = {};
 
   this.kickstart = function () {
-    var cfp = self.getCrossFilter();
-    cfp.then(self.renderPieChart);
-    cfp.then(self.renderResponsesbyDate);
-    cfp.then(self.renderDay);
-    cfp.then(self.renderHour);
+    console.log("Kickstarting");
+    var cfp = self.getCrossFilter().then(self.renderAll);
+    _.forEach(['date', 'hour', 'day'], self.bindSelectionEvents);
+  };
+
+  this.bindSelectionEvents = function (dim) {
+    self.getCrossFilter().then(function (gnvcf) {
+      $('#chart-' + dim)
+        .bind('plotselected', function (event, ranges) {
+          console.log("plotselected: ", dim, ranges);
+          var min = ranges.xaxis.from = ranges.xaxis.from.toFixed();
+          var max = ranges.xaxis.to = ranges.xaxis.to.toFixed();
+          gnvcf.setFilter(dim, min, max);
+          self.plots[dim].setSelection(ranges, true);
+          self.renderAll(gnvcf, dim);
+        })
+        .bind('plotunselected', function (event) {
+          console.log("plotunselected: ", dim);
+          gnvcf.clearFilter(dim);
+          self.renderAll(gnvcf, dim);
+        });
+    });
   };
 
   this.fetchJson = function (url) {
@@ -107,7 +128,29 @@ function GnvData() {
     return self._crossfilter;
   };
 
-  this.renderResponsesbyDate = function (gnvcf) {
+  this.renderAll = function (gnvcf, except) {
+    _.forEach(self.renderers, function (fn, dim) {
+      if(dim !== except){
+        window.setTimeout(_.partial(fn, gnvcf));
+      }
+    });
+  };
+
+  function maintainSelection(dim, fn) {
+    return function(gnvcf) {
+      var ranges = self.plots[dim] && self.plots[dim].getSelection();
+      var plot = fn(gnvcf);
+      self.plots[dim] = plot;
+      if(ranges) {
+        plot.setSelection(ranges, true);
+      }
+    };
+  }
+
+  function makeRenderFunction(dim, fn) {
+    self.renderers[dim] = maintainSelection(dim, fn);
+  }
+  makeRenderFunction('date', function(gnvcf) {
     var data = gnvcf.getResponseByDate();
     var options = {
       xaxis: { mode: "time" },
@@ -116,17 +159,13 @@ function GnvData() {
         show: true,
         content: '%x: %y'
       },
-      // selection: {
-      //   mode: 'x'
-      // },
-      grid: {
-        hoverable: true
-      }
+      grid: { hoverable: true },
+      selection: { mode: "x" }
     };
-    $.plot('#chart-responsesByDate', [data], options);
-  };
+    return $.plot('#chart-date', [data], options);
+  });
 
-  this.renderPieChart = function (gnvcf) {
+  makeRenderFunction('type', function(gnvcf) {
     var data = gnvcf.getTypeData();
     var options = {
       series: {
@@ -144,62 +183,50 @@ function GnvData() {
           }
         }
       },
-      grid: {
-        hoverable: true
-      },
+      grid: { hoverable: true },
       tooltip: {
         show: true,
         content: "%s: %p.2"
       },
-      legend: {
-        show: false
-      }
+      legend: { show: false }
     };
-    $.plot('#chart-type', data, options);
-  };
+    return $.plot('#chart-type', data, options);
+  });
 
-  this.renderDay = function (gnvcf) {
+  makeRenderFunction('day', function(gnvcf) {
     var data = gnvcf.getDailyData();
     var options = {
       series: {
-        bars: {
-          show: true
-        }
+        bars: { show: true }
       },
-      grid: {
-        hoverable: true
-      },
+      grid: { hoverable: true },
       tooltip: {
         show: true,
         content: "%y"
       },
       xaxis: {
         ticks: [[0, "Sunday"], [1, "Monday"], [2, "Tuesday"], [3, "Wednesday"],
-                [4, "Thursday"], [5, "Friday"], [6, "Saturday"]],
-      }
+                [4, "Thursday"], [5, "Friday"], [6, "Saturday"]]
+      },
+      selection: { mode: "x" }
     };
-    $.plot('#chart-day', [data], options);
-  };
+    return $.plot('#chart-day', [data], options);
+  });
 
-  this.renderHour = function  (gnvcf) {
+  makeRenderFunction('hour', function(gnvcf) {
     var data = gnvcf.getHourlyData();
     var options = {
       series: {
-        bars: {
-          show: true
-        }
+        bars: { show: true }
       },
-      grid: {
-        hoverable: true
-      },
+      grid: { hoverable: true },
       tooltip: {
         show: true,
         content: "%y"
       },
-      xaxis: {
-        tickDecimals: 0,
-      }
+      xaxis: { tickDecimals: 0 },
+      selection: { mode: "x" }
     };
-    $.plot('#chart-hour', [data], options);
-  };
+    return $.plot('#chart-hour', [data], options);
+  });
 }
